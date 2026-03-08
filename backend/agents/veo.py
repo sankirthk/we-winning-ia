@@ -130,7 +130,7 @@ class VeoAgent(BaseAgent):
         total_duration = sum(c["duration_seconds"] for c in clips)
         yield Event(
             author=self.name,
-            content=f"Veo done: {len(clips)} clips, ~{total_duration}s total",
+            content=types.Content(role="model", parts=[types.Part(text=f"Veo done: {len(clips)} clips, ~{total_duration}s total")]),
         )
 
 

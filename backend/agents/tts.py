@@ -11,6 +11,7 @@ from google.cloud import texttospeech
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
+from google.genai import types
 
 from tools.job_store import update_job
 
@@ -23,7 +24,7 @@ def _get_chunks(narration_script: dict) -> list[dict]:
     if narration_script.get("hook"):
         chunks.append({"scene_id": "hook", "text": narration_script["hook"]})
     for scene in narration_script.get("scenes", []):
-        chunks.append({"scene_id": scene.get("id", len(chunks)), "text": scene["text"]})
+        chunks.append({"scene_id": scene.get("scene_id", len(chunks)), "text": scene["narration"]})
     if narration_script.get("outro"):
         chunks.append({"scene_id": "outro", "text": narration_script["outro"]})
     return chunks
@@ -149,7 +150,7 @@ class TTSAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=f"TTS done: {round(offset, 1)}s audio, {len(word_timestamps)} words, {len(scene_timestamps)} scenes",
+            content=types.Content(role="model", parts=[types.Part(text=f"TTS done: {round(offset, 1)}s audio, {len(word_timestamps)} words, {len(scene_timestamps)} scenes")]),
         )
 
 

@@ -15,6 +15,7 @@ from typing import AsyncGenerator
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
+from google.genai import types
 from pydantic import ValidationError
 
 from models.narration_script import NarrationScript
@@ -120,7 +121,7 @@ class NarrativeScriptAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=f"Script written: {len(script.scenes)} scenes, ~{total_words} words (~{total_words // 2}-{total_words // 2 + 5}s)",
+            content=types.Content(role="model", parts=[types.Part(text=f"Script written: {len(script.scenes)} scenes, ~{total_words} words (~{total_words // 2}-{total_words // 2 + 5}s)")]),
         )
 
 

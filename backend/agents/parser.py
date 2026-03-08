@@ -208,7 +208,7 @@ class ParserAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=f"[{backend}] Parsed '{manifest.title}' — {len(manifest.key_sections)} sections, sentiment: {manifest.sentiment}",
+            content=types.Content(role="model", parts=[types.Part(text=f"[{backend}] Parsed '{manifest.title}' — {len(manifest.key_sections)} sections, sentiment: {manifest.sentiment}")]),
         )
 
 

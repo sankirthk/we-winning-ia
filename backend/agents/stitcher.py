@@ -19,6 +19,7 @@ from typing import AsyncGenerator
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
+from google.genai import types
 
 from tools.storage import save_upload, get_signed_url, DEV_MODE
 from tools.job_store import update_job
@@ -162,7 +163,7 @@ class StitcherAgent(BaseAgent):
         total_duration = sum(c["duration_seconds"] for c in clips)
         yield Event(
             author=self.name,
-            content=f"Stitch complete: {len(clips)} clips, ~{total_duration}s → {final_uri}",
+            content=types.Content(role="model", parts=[types.Part(text=f"Stitch complete: {len(clips)} clips, ~{total_duration}s → {final_uri}")]),
         )
 
 

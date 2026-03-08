@@ -18,6 +18,7 @@ from typing import AsyncGenerator
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
+from google.genai import types
 
 from tools.gemini import build_client, GEMINI_MODEL, generate_with_retry
 from tools.job_store import update_job
@@ -172,7 +173,7 @@ class VideoScriptAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=f"VideoScript: {len(scenes)} scenes ({presenter_count} presenter, {broll_count} b-roll), ~{total_duration}s",
+            content=types.Content(role="model", parts=[types.Part(text=f"VideoScript: {len(scenes)} scenes ({presenter_count} presenter, {broll_count} b-roll), ~{total_duration}s")]),
         )
 
 

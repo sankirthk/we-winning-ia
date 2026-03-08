@@ -96,7 +96,7 @@ class KnowledgeBaseAgent(BaseAgent):
 
         yield Event(
             author=self.name,
-            content=f"Knowledge base built: {len(kb.deep_findings)} findings, {len(kb.key_facts)} facts, {len(kb.definitions)} definitions",
+            content=types.Content(role="model", parts=[types.Part(text=f"Knowledge base built: {len(kb.deep_findings)} findings, {len(kb.key_facts)} facts, {len(kb.definitions)} definitions")]),
         )
 
 
