@@ -33,29 +33,40 @@ from tools.gemini import build_client, GEMINI_MODEL
 from tools.job_store import update_job
 
 MANIFEST_PROMPT = """
-You are a document analyst. Based on the report content provided, extract the following as JSON.
+You are a senior analyst extracting structured intelligence from a report.
+Your output feeds directly into a narration pipeline — so every summary
+must explain WHY, not just WHAT. Numbers without context are useless.
+
+Extract the following as JSON:
 
 {
   "title": "<report title>",
-  "type": "<corporate | financial | research | other>",
+  "type": "<corporate | financial | research | project | other>",
   "total_pages": <int>,
   "key_sections": [
     {
       "id": <int, starting at 1>,
       "heading": "<section heading>",
-      "summary": "<2-3 sentence summary of this section>",
-      "key_stats": ["<specific number, percentage, or named fact>"],
-      "page": <page number where this section starts>
+      "summary": "<3-4 sentences. State the key finding, explain what drove it, and note any tension or contradiction. If a number went up or down, say why. If a risk is flagged, say what caused it. Write like an analyst briefing an executive — precise, causal, no filler.>",
+      "key_stats": [
+        "<specific stat with context e.g. 'Revenue fell 8% YoY driven by 23% contraction in North American enterprise sales'>",
+        "<another stat — must include the number AND what it means>"
+      ],
+      "page": <int — page where this section starts>
     }
   ],
-  "overall_summary": "<1-2 sentence summary of the entire report>",
-  "sentiment": "<positive | cautious | negative | neutral>"
+  "overall_summary": "<3-4 sentences. What is the single most important takeaway? What is the underlying tension or story in this report? What should the reader walk away thinking about?>",
+  "sentiment": "<positive | cautious | negative | neutral>",
+  "sentiment_reason": "<1 sentence — why this sentiment. e.g. 'Growth in APAC offsets NA decline but margin compression is accelerating'>"
 }
 
 Rules:
-- Include only the most important 3-6 sections — skip boilerplate like table of contents or legal disclaimers
-- key_stats must be specific numbers, percentages, or named facts — not vague statements
-- Return ONLY valid JSON. No markdown fences, no explanation.
+- Include only the 3-6 most substantive sections — skip table of contents, disclaimers, acknowledgements, or any section with no analytical content
+- key_stats must pair a specific number with its cause or implication — never a naked percentage with no context
+- summary must answer: what happened, why it happened, what it means
+- If the report contains projections or forecasts, include them with their assumptions in the relevant section summary
+- If two sections contradict each other or show tension, call it out explicitly in the summaries — that tension is what makes narration interesting
+- Return ONLY valid JSON. No markdown fences. No explanation.
 """
 
 

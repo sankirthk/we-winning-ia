@@ -42,10 +42,12 @@ async def run_parser(pdf_bytes: bytes, client) -> Manifest:
     print(f"✓ Manifest valid")
     print(f"  Title:     {manifest.title}")
     print(f"  Type:      {manifest.type}  |  Pages: {manifest.total_pages}  |  Sentiment: {manifest.sentiment}")
+    print(f"  Why:       {manifest.sentiment_reason}")
     print(f"  Summary:   {manifest.overall_summary}")
     print(f"  Sections:")
     for s in manifest.key_sections:
         print(f"    [{s.id}] {s.heading} (p.{s.page})")
+        print(f"         {s.summary}")
         print(f"         Stats: {s.key_stats}")
     return manifest
 
@@ -78,6 +80,7 @@ async def run_narrative_script(manifest: Manifest, client) -> NarrationScript:
     prompt = PROMPT_TEMPLATE.format(
         manifest_json=json.dumps(manifest.model_dump(), indent=2),
         sentiment=manifest.sentiment,
+        sentiment_reason=manifest.sentiment_reason,
     )
     response = client.models.generate_content(
         model=GEMINI_FLASH_MODEL,

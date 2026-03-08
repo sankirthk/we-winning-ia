@@ -22,7 +22,12 @@ from tools.gemini import build_client, GEMINI_FLASH_MODEL
 from tools.job_store import update_job
 
 PROMPT_TEMPLATE = """
-You are a TikTok scriptwriter for corporate and research reports. Write punchy, Bloomberg-style narration — fast, conversational, zero jargon.
+You are a tech content creator — think Fireship, MKBHD, or Andrej Karpathy's explainer style.
+Someone handed you this report. You read it. Now you're breaking it down for your audience in a short-form video.
+
+You are NOT the author. You're reacting to and explaining someone else's work.
+Your audience is smart — engineers, founders, analysts. Don't talk down to them.
+Be direct, be precise, and let the interesting findings speak for themselves.
 
 Here is the report manifest (JSON):
 {manifest_json}
@@ -30,25 +35,26 @@ Here is the report manifest (JSON):
 Produce a short-form video script as JSON with this exact shape:
 
 {{
-  "hook": "<1 punchy opening sentence, max 15 words — grab attention immediately>",
+  "hook": "<1 sentence, max 15 words — lead with the most surprising or counterintuitive finding. No hype, just the fact.>",
   "scenes": [
     {{
       "scene_id": <int, starting at 1>,
       "section_id": <int — must match a key_section id from the manifest>,
-      "narration": "<2-3 fast sentences spoken aloud — conversational, no jargon, punchy>",
-      "caption": "<max 8 words — include the most striking key_stat from this section>",
-      "tone": "<urgent | optimistic | neutral | dramatic | cautious — match section content and overall sentiment>"
+      "narration": "<2-3 sentences spoken aloud. Explain what they did, what they found, and why it's interesting or surprising. Use specific numbers. Talk like you're explaining to a smart colleague, not reading a press release.>",
+      "caption": "<max 8 words — the single most striking stat or finding from this section>",
+      "tone": "<urgent | optimistic | neutral | dramatic | cautious — match the actual content, not just sentiment>"
     }}
   ],
-  "outro": "<1 closing sentence — prompts reflection or action>"
+  "outro": "<1 sentence — what this means for the field or what question it leaves open. No fluff.>"
 }}
 
 Rules:
 - Write exactly one scene per key_section in the manifest (same count, same order, matching section_id)
-- Total narration across all scenes + hook + outro should be 75-150 words (30-60 seconds when read aloud)
-- Tone per scene should reflect the section content AND the overall document sentiment: {sentiment}
-- Caption must include a specific number or stat from that section's key_stats if available
-- Write like a Bloomberg short, not a board presentation — punchy verbs, active voice
+- Total narration across all scenes + hook + outro: 75-150 words (30-60 seconds read aloud)
+- Overall document sentiment is {sentiment} — reason: {sentiment_reason}
+- Every narration must reference at least one specific number or fact from that section
+- No Gen Z slang, no filler phrases ("game-changing", "deep dive", "unpack"), no hype
+- Captions are for on-screen overlay — keep them scannable, not a sentence
 - Return ONLY valid JSON. No markdown fences, no explanation.
 """
 
@@ -71,12 +77,13 @@ class NarrativeScriptAgent(BaseAgent):
 
         # Serialize the full manifest so Gemini sees all headings, summaries, and key_stats
         manifest_json = json.dumps(manifest, indent=2)
-        # Pass sentiment separately so the prompt rule is explicit and easy to tune
         sentiment = manifest.get("sentiment", "neutral")
+        sentiment_reason = manifest.get("sentiment_reason", "")
 
         prompt = PROMPT_TEMPLATE.format(
             manifest_json=manifest_json,
             sentiment=sentiment,
+            sentiment_reason=sentiment_reason,
         )
 
         client = build_client()

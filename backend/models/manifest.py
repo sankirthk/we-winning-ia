@@ -18,8 +18,9 @@ class KeySection(BaseModel):
 
 class Manifest(BaseModel):
     title: str
-    type: Literal["corporate", "financial", "research", "other"]
+    type: Literal["corporate", "financial", "research", "project", "other"]
     total_pages: int
     key_sections: list[KeySection] = Field(min_length=1)
     overall_summary: str
     sentiment: Literal["positive", "cautious", "negative", "neutral"]
+    sentiment_reason: str = ""  # why this sentiment — used in narration prompt
