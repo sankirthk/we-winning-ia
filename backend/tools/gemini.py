@@ -1,5 +1,5 @@
 """
-Shared Gemini client builder.
+Shared Gemini client builder and generate helper.
 All agents that call Gemini should import from here.
 
 Auth priority:
@@ -8,11 +8,19 @@ Auth priority:
 """
 
 import os
+import time
+import random
 
 from google import genai
+from google.genai import types
 
 GEMINI_MODEL = "publishers/google/models/gemini-3.1-pro-preview"
 GEMINI_FLASH_MODEL = "publishers/google/models/gemini-3-flash-preview"
+
+# Retry config for 429 RESOURCE_EXHAUSTED
+_MAX_RETRIES = 5
+_BASE_DELAY = 5   # seconds — first retry waits ~5s
+_MAX_DELAY = 60   # cap backoff at 60s
 
 
 def build_client() -> genai.Client:
@@ -24,3 +32,25 @@ def build_client() -> genai.Client:
         project=os.getenv("GOOGLE_CLOUD_PROJECT"),
         location=os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
     )
+
+
+def generate_with_retry(client: genai.Client, model: str, contents) -> types.GenerateContentResponse:
+    """
+    Call client.models.generate_content with exponential backoff on 429s.
+    All agents should use this instead of calling generate_content directly.
+    """
+    delay = _BASE_DELAY
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            return client.models.generate_content(model=model, contents=contents)
+        except Exception as e:
+            is_429 = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+            if is_429 and attempt < _MAX_RETRIES:
+                # Jitter prevents both concurrent callers retrying at the same instant
+                jitter = random.uniform(0, delay * 0.3)
+                wait = delay + jitter
+                print(f"  [gemini] 429 rate limit (attempt {attempt}/{_MAX_RETRIES}), retrying in {wait:.1f}s...")
+                time.sleep(wait)
+                delay = min(delay * 2, _MAX_DELAY)
+            else:
+                raise

@@ -18,7 +18,7 @@ from google.adk.events import Event
 from pydantic import ValidationError
 
 from models.narration_script import NarrationScript
-from tools.gemini import build_client, GEMINI_FLASH_MODEL
+from tools.gemini import build_client, GEMINI_FLASH_MODEL, generate_with_retry
 from tools.job_store import update_job
 
 PROMPT_TEMPLATE = """
@@ -92,10 +92,7 @@ class NarrativeScriptAgent(BaseAgent):
         )
 
         client = build_client()
-        response = client.models.generate_content(
-            model=GEMINI_FLASH_MODEL,
-            contents=[prompt],
-        )
+        response = generate_with_retry(client, GEMINI_FLASH_MODEL, [prompt])
 
         # Strip any accidental markdown fences before JSON parsing
         raw = _extract_json(response.text)

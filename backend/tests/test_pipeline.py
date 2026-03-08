@@ -27,7 +27,7 @@ from agents.narrative_script import _extract_json as ns_extract_json, PROMPT_TEM
 from models.manifest import Manifest
 from models.knowledge_base import KnowledgeBase
 from models.narration_script import NarrationScript
-from tools.gemini import build_client, GEMINI_MODEL, GEMINI_FLASH_MODEL
+from tools.gemini import build_client, GEMINI_MODEL, GEMINI_FLASH_MODEL, generate_with_retry
 from google.genai import types
 
 
@@ -58,9 +58,10 @@ async def run_parser(pdf_bytes: bytes, client) -> Manifest:
 
 def _kb_generate(pdf_bytes: bytes, client) -> KnowledgeBase:
     """Blocking KB generation — called via to_thread."""
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[
+    response = generate_with_retry(
+        client,
+        GEMINI_MODEL,
+        [
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             KB_PROMPT,
         ],
@@ -90,10 +91,7 @@ def _narration_generate(manifest: Manifest, client) -> NarrationScript:
         manifest_json=json.dumps(manifest.model_dump(), indent=2),
         sentiment=manifest.sentiment,
     )
-    response = client.models.generate_content(
-        model=GEMINI_FLASH_MODEL,
-        contents=[prompt],
-    )
+    response = generate_with_retry(client, GEMINI_FLASH_MODEL, [prompt])
     raw = ns_extract_json(response.text)
     return NarrationScript.model_validate(raw)
 

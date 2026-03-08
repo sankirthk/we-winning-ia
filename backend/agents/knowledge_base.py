@@ -21,7 +21,7 @@ from google.genai import types
 from pydantic import ValidationError
 
 from models.knowledge_base import KnowledgeBase
-from tools.gemini import build_client, GEMINI_MODEL
+from tools.gemini import build_client, GEMINI_MODEL, generate_with_retry
 from tools.job_store import update_job
 
 PROMPT = """
@@ -75,9 +75,10 @@ class KnowledgeBaseAgent(BaseAgent):
 
         client = build_client()
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[
+        response = generate_with_retry(
+            client,
+            GEMINI_MODEL,
+            [
                 types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
                 PROMPT,
             ],

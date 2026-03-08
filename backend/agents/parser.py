@@ -29,7 +29,7 @@ from google.adk.events import Event
 from pydantic import ValidationError
 
 from models.manifest import Manifest
-from tools.gemini import build_client, GEMINI_MODEL
+from tools.gemini import build_client, GEMINI_MODEL, generate_with_retry
 from tools.job_store import update_job
 
 MANIFEST_PROMPT = """
@@ -82,9 +82,10 @@ def _extract_json(text: str) -> dict:
 
 def _parse_with_gemini(pdf_bytes: bytes, client: genai.Client) -> dict:
     """Send PDF directly to Gemini as a native file part."""
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[
+    response = generate_with_retry(
+        client,
+        GEMINI_MODEL,
+        [
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             MANIFEST_PROMPT,
         ],
