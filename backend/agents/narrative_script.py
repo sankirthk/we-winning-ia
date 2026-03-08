@@ -22,40 +22,41 @@ from tools.gemini import build_client, GEMINI_FLASH_MODEL
 from tools.job_store import update_job
 
 PROMPT_TEMPLATE = """
-You are a tech content creator — think Fireship, MKBHD, or Andrej Karpathy's explainer style.
-Someone handed you this report. You read it. Now you're breaking it down for your audience in a short-form video.
+You are writing narration for a short-form video that condenses a report
+into 30-60 seconds. Think Veritasium, Wendover Productions, or a Bloomberg
+QuickTake — intelligent, fast-paced, but never dumbed down. The audience
+is smart. Respect that.
 
-You are NOT the author. You're reacting to and explaining someone else's work.
-Your audience is smart — engineers, founders, analysts. Don't talk down to them.
-Be direct, be precise, and let the interesting findings speak for themselves.
-
-Here is the report manifest (JSON):
+Report manifest:
 {manifest_json}
 
-Produce a short-form video script as JSON with this exact shape:
-
+Produce a script as JSON with this exact shape:
 {{
-  "hook": "<1 sentence, max 15 words — lead with the most surprising or counterintuitive finding. No hype, just the fact.>",
+  "hook": "<1 sentence — open with the most surprising or counterintuitive finding. No questions. State it as fact.>",
   "scenes": [
     {{
-      "scene_id": <int, starting at 1>,
-      "section_id": <int — must match a key_section id from the manifest>,
-      "narration": "<2-3 sentences spoken aloud. Explain what they did, what they found, and why it's interesting or surprising. Use specific numbers. Talk like you're explaining to a smart colleague, not reading a press release.>",
-      "caption": "<max 8 words — the single most striking stat or finding from this section>",
-      "tone": "<urgent | optimistic | neutral | dramatic | cautious — match the actual content, not just sentiment>"
+      "scene_id": <int starting at 1>,
+      "section_id": <int matching a key_section id>,
+      "narration": "<2-3 sentences. Explain the finding clearly and quickly. Use the actual numbers. Connect cause to effect. Write how a smart person explains something to another smart person — no filler, no hype, no exclamation points.>",
+      "caption": "<The single most important stat from this section. Just the number and context. Max 8 words.>",
+      "tone": "<urgent | optimistic | neutral | dramatic | cautious>"
     }}
   ],
-  "outro": "<1 sentence — what this means for the field or what question it leaves open. No fluff.>"
+  "outro": "<1 sentence — what this means going forward. Forward-looking, grounded, no fluff.>"
 }}
 
 Rules:
-- Write exactly one scene per key_section in the manifest (same count, same order, matching section_id)
-- Total narration across all scenes + hook + outro: 75-150 words (30-60 seconds read aloud)
-- Overall document sentiment is {sentiment} — reason: {sentiment_reason}
-- Every narration must reference at least one specific number or fact from that section
-- No Gen Z slang, no filler phrases ("game-changing", "deep dive", "unpack"), no hype
-- Captions are for on-screen overlay — keep them scannable, not a sentence
-- Return ONLY valid JSON. No markdown fences, no explanation.
+- One scene per key_section, same order, matching section_id
+- Total words across hook + all narration + outro: 75-150 words
+- Use the actual numbers and stats from the manifest — never vague
+- No rhetorical questions. No "but here's the thing". No "let that sink in".
+- No exclamation points. No emojis in narration.
+- Active voice. Short sentences. Concrete nouns.
+- Tone per scene must match both the section content and overall sentiment: {sentiment}
+- Return ONLY valid JSON. No markdown fences. No explanation.
+
+Bad narration: "Revenue TANKED this quarter and here's why that matters!"
+Good narration: "Revenue fell 8% year over year — the steepest single-quarter drop since 2019, driven almost entirely by a 23% contraction in North American enterprise sales."
 """
 
 
@@ -83,7 +84,6 @@ class NarrativeScriptAgent(BaseAgent):
         prompt = PROMPT_TEMPLATE.format(
             manifest_json=manifest_json,
             sentiment=sentiment,
-            sentiment_reason=sentiment_reason,
         )
 
         client = build_client()

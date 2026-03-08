@@ -80,7 +80,6 @@ async def run_narrative_script(manifest: Manifest, client) -> NarrationScript:
     prompt = PROMPT_TEMPLATE.format(
         manifest_json=json.dumps(manifest.model_dump(), indent=2),
         sentiment=manifest.sentiment,
-        sentiment_reason=manifest.sentiment_reason,
     )
     response = client.models.generate_content(
         model=GEMINI_FLASH_MODEL,
