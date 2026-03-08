@@ -9,55 +9,91 @@
 - Python 3.13+
 - [uv](https://astral.sh/uv) — fast Python package manager
 - [Docker](https://docs.docker.com/get-docker/) + Docker Compose (optional)
-- A Google Cloud project with the following APIs enabled:
-  - Vertex AI (Gemini 2.0 Flash, Veo 2)
-  - Cloud Text-to-Speech
-  - Cloud Storage
-- A GCP service account key with access to the above
 
 ---
 
-## Setup
+## GCP Setup
 
-### 1. Clone & configure env
+### 1. Create a project
+
+Go to [console.cloud.google.com](https://console.cloud.google.com) and create a project, or use an existing one. Note the **Project ID** (not the name).
+
+### 2. Enable APIs
+
+In the GCP Console → **APIs & Services → Enable APIs**, enable:
+
+| API | Used by |
+|-----|---------|
+| Vertex AI API | Gemini 3.1 Pro (parser, script), Veo 2 (video) |
+| Cloud Text-to-Speech API | TTSAgent |
+| Cloud Storage API | File storage in prod |
+| Cloud Document AI API | Optional — only if `PARSER_BACKEND=documentai` |
+
+### 3. Get credentials
+
+**Option A — Vertex AI Express API Key (recommended for local dev, no gcloud needed)**
+
+1. Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
+2. Click **Create Credentials → API Key**
+3. Restrict it to the APIs above
+4. Copy the key → set as `GOOGLE_VERTEX_API_KEY` in `backend/.env`
+
+**Option B — Application Default Credentials (for Cloud Run / service accounts)**
+
+```bash
+# Install gcloud CLI: https://cloud.google.com/sdk/docs/install
+gcloud auth application-default login
+```
+
+This writes credentials to `~/.config/gcloud/application_default_credentials.json`. No env var needed — the SDK picks it up automatically. For Cloud Run, attach a service account to the instance instead.
+
+---
+
+## Environment Variables
+
+Copy and fill in `backend/.env`:
+
+```env
+# ── Google Cloud ──────────────────────────────────────────
+GOOGLE_CLOUD_PROJECT=your-project-id        # GCP Project ID (not the display name)
+GOOGLE_CLOUD_LOCATION=us-central1           # Vertex AI region
+
+# Auth — choose ONE:
+GOOGLE_VERTEX_API_KEY=your-api-key          # Option A: API key (local dev)
+# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json  # Option B: service account
+
+# ── Storage ───────────────────────────────────────────────
+DEV_MODE=true          # true = files saved locally under backend/local_storage/
+GCS_BUCKET=nevertrtfm  # only used when DEV_MODE=false
+
+# ── Parser backend ────────────────────────────────────────
+PARSER_BACKEND=gemini  # "gemini" (default) or "documentai"
+DOCUMENT_AI_PROCESSOR_ID=your-processor-id  # only needed if PARSER_BACKEND=documentai
+
+# ── CORS ──────────────────────────────────────────────────
+FRONTEND_URL=http://localhost:3000
+```
+
+> **Never commit `.env`** — it's gitignored. Only `.env.example` should be committed.
+
+---
+
+## Local Dev Setup
 
 ```bash
 git clone <repo-url>
 cd we-winning-ia
 
-cp backend/.env backend/.env.local   # make a personal copy if needed
-```
-
-Edit `backend/.env`:
-
-```env
-GOOGLE_CLOUD_PROJECT=your-gcp-project-id
-GOOGLE_CLOUD_LOCATION=us-central1
-GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
-
-DEV_MODE=true          # keeps files local, no GCS needed
-GCS_BUCKET=nevertrtfm  # only used when DEV_MODE=false
-FRONTEND_URL=http://localhost:3000
-```
-
-### 2. Install uv (if you don't have it)
-
-```bash
+# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-```
 
-### 3. Install dependencies
-
-```bash
+# Install dependencies
 cd backend
 uv venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 uv pip install -e .
-```
 
-### 4. Run the backend
-
-```bash
+# Run
 uvicorn main:app --reload --port 8080
 ```
 
@@ -71,11 +107,8 @@ Swagger: `http://localhost:8080/docs`
 ```bash
 # From repo root
 docker compose up --build
-```
 
-For hot reload during development:
-
-```bash
+# With hot reload
 docker compose watch
 ```
 
@@ -88,17 +121,20 @@ backend/
 ├── main.py           — FastAPI app, CORS, router registration
 ├── pipeline.py       — ADK SequentialAgent root, run_pipeline()
 ├── agents/
-│   ├── parser.py           — PDF → manifest (Gemini 2.0 Flash Vision)
-│   ├── narrative_script.py — manifest → script (Gemini 2.0 Flash)
+│   ├── parser.py           — PDF → manifest (Gemini 3.1 Pro)
+│   ├── narrative_script.py — manifest → script (Gemini 3.1 Pro)
 │   ├── tts.py              — script → audio + timestamps (Cloud TTS Chirp HD)
-│   ├── video_script.py     — script + timestamps → Veo prompts (Gemini 2.0 Flash)
+│   ├── video_script.py     — script + timestamps → Veo prompts (Gemini 3.1 Pro)
 │   ├── veo.py              — prompts → video clips (Veo 2)
 │   └── stitcher.py         — clips + audio → final MP4 (ffmpeg)
+├── models/
+│   └── manifest.py   — Pydantic models for validated agent outputs
 ├── routers/
 │   ├── generate.py   — POST /api/generate
 │   ├── status.py     — GET  /api/status/{job_id}
 │   └── live.py       — WS   /api/live/{job_id}
 └── tools/
+    ├── gemini.py     — shared Gemini client + model ID
     ├── job_store.py  — in-memory job state (swap Firestore for prod)
     └── storage.py    — local filesystem (DEV_MODE=true) or GCS toggle
 ```
@@ -127,10 +163,10 @@ WS /api/live/{job_id}
 
 | Who | Files |
 |-----|-------|
-| Person 1 | `agents/parser.py`, `agents/narrative_script.py`, GCP infra |
+| Person 1 | `agents/parser.py`, `agents/narrative_script.py`, `pipeline.py`, GCP infra |
 | Person 2 | `agents/tts.py`, `agents/video_script.py` |
 | Person 3 | `agents/veo.py`, `agents/stitcher.py`, `tools/storage.py` |
-| Person 4 | `routers/live.py`, `tools/job_store.py`, frontend |
+| Person 4 | `routers/live.py`, frontend |
 
 ---
 
@@ -142,7 +178,8 @@ cd backend
 gcloud run deploy nevertrtfm-api \
   --source . \
   --region us-central1 \
-  --allow-unauthenticated
+  --allow-unauthenticated \
+  --set-env-vars GOOGLE_CLOUD_PROJECT=your-project-id,DEV_MODE=false,GCS_BUCKET=nevertrtfm
 
 # Frontend → Firebase
 cd frontend

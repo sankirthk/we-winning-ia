@@ -13,6 +13,8 @@ dependencies = [
     "google-cloud-texttospeech>=2.17.0",
     "google-cloud-storage>=2.18.0",
     "websockets>=13.0",
+    "pydantic>=2.0.0",
+    "google-cloud-documentai>=2.20.0",
 ]
 
 [build-system]

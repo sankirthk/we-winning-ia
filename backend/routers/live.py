@@ -1,7 +1,12 @@
-# WS /api/live/{job_id}
+# WS /api/live/{job_id} — Person 4
 # LiveAgent — always-on WebSocket for real-time voice Q&A mid-playback
-# - Loads session["manifest"] from job_store as system context
-# - Receives: raw PCM 16-bit audio bytes from frontend
-# - Sends:    { type: "transcript", text: str }
-# - Frontend detects "resuming now" in text → resumes video playback
+# Receives: PCM 16-bit audio bytes
+# Sends:    { type: "transcript", text: str }
+# "resuming now" in text → frontend resumes video
 # Model: Gemini Live API
+
+from fastapi import APIRouter
+
+router = APIRouter()
+
+# TODO: Person 4 implements WebSocket endpoint + Gemini Live API wiring
