@@ -25,6 +25,7 @@ def create_job(job_id: str) -> dict:
         "step": "queued",
         "video_url": None,
         "manifest": None,
+        "knowledge_base": None,
         "error": None,
     }
     with _lock:
