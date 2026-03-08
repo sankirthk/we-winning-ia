@@ -32,6 +32,15 @@ from models.manifest import Manifest
 from tools.gemini import build_client, GEMINI_MODEL
 from tools.job_store import update_job
 
+def _text_event(author: str, text: str) -> Event:
+    return Event(
+        author=author,
+        content=types.Content(
+            role="model",
+            parts=[types.Part(text=text)],
+        ),
+    )
+
 MANIFEST_PROMPT = """
 You are a document analyst. Based on the report content provided, extract the following as JSON.
 
@@ -57,7 +66,6 @@ Rules:
 - key_stats must be specific numbers, percentages, or named facts — not vague statements
 - Return ONLY valid JSON. No markdown fences, no explanation.
 """
-
 
 
 
@@ -194,10 +202,9 @@ class ParserAgent(BaseAgent):
         # Write to job store now so LiveAgent can load it before the full pipeline finishes
         update_job(job_id, step="scripting", manifest=manifest.model_dump())
 
-        yield Event(
-            author=self.name,
-            content=f"[{backend}] Parsed '{manifest.title}' — {len(manifest.key_sections)} sections, sentiment: {manifest.sentiment}",
+        yield _text_event(
+            self.name,
+            f"[{backend}] Parsed '{manifest.title}' — {len(manifest.key_sections)} sections, sentiment: {manifest.sentiment}",
         )
-
 
 parser_agent = ParserAgent(name="ParserAgent")
