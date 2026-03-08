@@ -100,6 +100,7 @@ async def live(websocket: WebSocket, job_id: str):
 
             async def receive_from_client():
                 """Read PCM audio bytes from browser → forward to Gemini."""
+                audio_chunk_count = 0
                 try:
                     while not closed.is_set():
                         data = await websocket.receive()
@@ -107,6 +108,9 @@ async def live(websocket: WebSocket, job_id: str):
                             print("[live] Client disconnected (receive)", flush=True)
                             break
                         if data.get("bytes"):
+                            audio_chunk_count += 1
+                            if audio_chunk_count <= 3 or audio_chunk_count % 50 == 0:
+                                print(f"[live] 🎤 Audio chunk #{audio_chunk_count} ({len(data['bytes'])} bytes)", flush=True)
                             await session.send_realtime_input(
                                 media=types.Blob(data=data["bytes"], mime_type="audio/pcm;rate=16000")
                             )
@@ -141,36 +145,40 @@ async def live(websocket: WebSocket, job_id: str):
             async def send_to_client():
                 """Stream audio chunks to browser; signal turn_complete when done."""
                 msg_count = 0
+                turn_count = 0
                 try:
-                    async for msg in session.receive():
-                        if closed.is_set():
-                            break
+                    # session.receive() yields messages for ONE turn only.
+                    # We must re-call it after each turn to keep the session alive.
+                    while not closed.is_set():
+                        turn_count += 1
+                        print(f"[live] 📡 Waiting for Gemini turn #{turn_count}...", flush=True)
+                        async for msg in session.receive():
+                            if closed.is_set():
+                                break
 
-                        msg_count += 1
+                            msg_count += 1
 
-                        # Shorthand: msg.data is PCM audio bytes when modality=AUDIO
-                        if msg.data:
-                            await websocket.send_bytes(msg.data)
-                        elif msg.server_content:
-                            sc = msg.server_content
-                            if sc.model_turn:
-                                for part in sc.model_turn.parts or []:
-                                    if hasattr(part, "inline_data") and part.inline_data and part.inline_data.data:
-                                        await websocket.send_bytes(bytes(part.inline_data.data))
-                            if sc.turn_complete:
-                                print(f"[live] turn_complete (msg #{msg_count}) → signalling client", flush=True)
-                                await websocket.send_json({"type": "turn_complete"})
-                        else:
-                            # Log unexpected message shapes
-                            print(f"[live] msg #{msg_count}: no data/server_content. "
-                                  f"attrs={[k for k in dir(msg) if not k.startswith('_')]}", flush=True)
+                            # Shorthand: msg.data is PCM audio bytes when modality=AUDIO
+                            if msg.data:
+                                await websocket.send_bytes(msg.data)
+                            elif msg.server_content:
+                                sc = msg.server_content
+                                if sc.model_turn:
+                                    for part in sc.model_turn.parts or []:
+                                        if hasattr(part, "inline_data") and part.inline_data and part.inline_data.data:
+                                            await websocket.send_bytes(bytes(part.inline_data.data))
+                                if sc.turn_complete:
+                                    print(f"[live] turn_complete (msg #{msg_count}, turn #{turn_count}) → signalling client", flush=True)
+                                    await websocket.send_json({"type": "turn_complete"})
+                            else:
+                                print(f"[live] msg #{msg_count}: no data/server_content", flush=True)
                 except WebSocketDisconnect:
                     print("[live] send_to_client: WebSocketDisconnect", flush=True)
                 except Exception as e:
                     print(f"[live] send_to_client error: {type(e).__name__}: {e}", flush=True)
                 finally:
                     closed.set()
-                    print(f"[live] send_to_client exited after {msg_count} msgs", flush=True)
+                    print(f"[live] send_to_client exited after {msg_count} msgs, {turn_count} turns", flush=True)
 
             receive_task = asyncio.create_task(receive_from_client())
             send_task = asyncio.create_task(send_to_client())

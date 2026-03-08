@@ -120,8 +120,8 @@ export default function Home() {
   }, []);
 
   const scheduleAudioChunk = useCallback((pcm16: ArrayBuffer) => {
-    // If we're recording, we shouldn't be playing audio back yet
-    if (isRecordingRef.current) return;
+    // Gemini uses its own VAD — it can send audio back while mic is still open.
+    // Always play incoming audio.
 
     if (!playbackCtxRef.current) {
       playbackCtxRef.current = new AudioContext({ sampleRate: 24000 });
@@ -168,10 +168,13 @@ export default function Home() {
       try {
         const data = JSON.parse(event.data as string);
         if (data.type === "turn_complete") {
-          // Only resume video if we are absolutely done (not currently interrupting)
+          console.log("[ws] turn_complete received");
+
+          // Auto-stop mic if still recording
           if (isRecordingRef.current) {
-            console.log("[ws] ignoring turn_complete because user is currently recording");
-            return;
+            stopMic();
+            setIsRecording(false);
+            isRecordingRef.current = false;
           }
 
           // Resume video after remaining audio finishes
@@ -180,10 +183,7 @@ export default function Home() {
             ? Math.max(0, (nextPlayTimeRef.current - ctx.currentTime) * 1000 + 200)
             : 0;
           setTimeout(() => {
-            // Only resume if still not recording
-            if (!isRecordingRef.current) {
-              videoRef.current?.play();
-            }
+            videoRef.current?.play();
           }, delay);
         }
       } catch {
@@ -199,7 +199,7 @@ export default function Home() {
     ws.onerror = (e) => console.error("[ws] error", e);
 
     wsRef.current = ws;
-  }, [jobId, scheduleAudioChunk]);
+  }, [jobId, scheduleAudioChunk, stopMic]);
 
   // Clean up WS + mic on unmount
   useEffect(() => {
