@@ -233,6 +233,7 @@ def _build_run_config() -> RunConfig:
             language_code="en-US",
         ),
     )
+
 @router.websocket("/live/{job_id}")
 async def live_ws(websocket: WebSocket, job_id: str):
     print(f"[live_ws] incoming connection for job_id={job_id}")
@@ -275,9 +276,22 @@ async def live_ws(websocket: WebSocket, job_id: str):
             await safe_close(code=4404)
             return
 
+        if job.get("status") == "error":
+            await safe_send_json(
+                {
+                    "type": "error",
+                    "message": job.get("error", "Pipeline failed before live session."),
+                }
+            )
+            await safe_close(code=4410)
+            return
+
         if not job.get("manifest") and not job.get("knowledge_base"):
             await safe_send_json(
-                {"type": "error", "message": "Report context not ready yet for live Q&A."}
+                {
+                    "type": "error",
+                    "message": "Report context not ready yet for live Q&A.",
+                }
             )
             await safe_close(code=4409)
             return
@@ -366,7 +380,7 @@ async def live_ws(websocket: WebSocket, job_id: str):
                                 "scene_text": scene_text,
                             }
                         )
-                        
+
                     elif msg_type == "end_turn":
                         print("[upstream] end_turn")
                         live_request_queue.send_content(
