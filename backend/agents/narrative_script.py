@@ -22,46 +22,49 @@ from tools.gemini import build_client, GEMINI_FLASH_MODEL, generate_with_retry
 from tools.job_store import update_job
 
 PROMPT_TEMPLATE = """
-You are writing narration for a short-form video that condenses a report
-into 30-60 seconds. Think Veritasium, Wendover Productions, or a Bloomberg
-QuickTake — intelligent, fast-paced, but never dumbed down. The audience
-is smart. Respect that.
+You are narrating a short video where you personally explain a report to a friend
+who is smart but hasn't read it. You've read it. You found it interesting.
+Now you're telling them what's in it — conversationally, like you're sitting
+across from them.
+
+Not a presenter. Not a newsreader. A person talking to another person.
 
 Report manifest:
 {manifest_json}
 
-Produce a script as JSON with this exact shape:
+Overall sentiment: {sentiment}
+Why: {sentiment_reason}
+
+Output JSON with this exact shape:
 {{
-  "hook": "<1 sentence — open with the most surprising or counterintuitive finding. No questions. State it as fact.>",
+  "hook": "<1 sentence — the most surprising thing you found in this report. Start with 'So' or 'Turns out' or just state it directly. Sound like you just looked up from reading and said this out loud.>",
   "scenes": [
     {{
       "scene_id": <int starting at 1>,
       "section_id": <int matching a key_section id>,
-      "narration": "<2-3 sentences. Explain the finding clearly and quickly. Use the actual numbers. Connect cause to effect. Write how a smart person explains something to another smart person — no filler, no hype, no exclamation points.>",
-      "caption": "<The single most important stat from this section. Just the number and context. Max 8 words.>",
+      "narration": "<3-4 conversational sentences. You are explaining this section to your friend. Use 'they', 'the team', 'the authors', 'the company' — whoever wrote the report. Say what they found, why it was surprising, and what it means. Use the real numbers but say them naturally — '30 times slower' not '30x latency increase'. Connect ideas with 'but', 'so', 'which means', 'the problem is', 'what's wild is'. Sound human.>",
+      "caption": "<The twist or punchline of this scene. Max 6 words. Something that would make someone stop scrolling.>",
       "tone": "<urgent | optimistic | neutral | dramatic | cautious>"
     }}
   ],
-  "outro": "<1 sentence — what this means going forward. Forward-looking, grounded, no fluff.>"
+  "outro": "<1 sentence — said directly to the viewer. What should they take away from this? Start with 'The takeaway is' or 'Bottom line:' or just say it plainly.>"
 }}
 
 Rules:
 - One scene per key_section, same order, matching section_id
-- Total words across hook + all narration + outro: 75-110 words maximum
-- Use the actual numbers and stats from the manifest — never vague
-- No rhetorical questions. No "but here's the thing". No "let that sink in".
-- No exclamation points. No emojis in narration.
-- Active voice. Short sentences. Concrete nouns.
-- Tone per scene must match both the section content and overall sentiment: {sentiment}
-- Each narration must have a connective arc: state the finding, then explain the tension or contradiction, then land the implication. Never list facts side by side without connecting them causally.
-- Captions must capture the counterintuitive twist of the scene, not just restate the stat. A good caption makes someone stop scrolling.
+- Total words across hook + all narration + outro: 90-120 words
+- Use the real numbers — but say them how a person would say them out loud
+- No bullet points in your head. No listy sentences. Flowing speech only.
+- No exclamation points. No rhetorical questions. No "let that sink in".
+- Never say "this report", "the document", "the data shows" — you are telling someone what happened, not summarizing a document
+- Each scene must flow: here's what they found → here's why it's surprising or contradictory → here's what it means
 - Return ONLY valid JSON. No markdown fences. No explanation.
 
-Bad narration: "Pipelining impact is non-linear and kernel-dependent. Aggressive prefetching improved attention throughput by 8.7 percent but slowed compute-bound kernels by 13 percent due to instruction fetch overhead."
-Good narration: "Pipelining helps and hurts simultaneously. The same aggressive prefetching that boosted attention throughput 8.7% actively stalled compute-bound kernels — instruction fetch overhead ate the gains."
+Bad narration: "Pipelining outcomes are kernel-dependent. Prefetching boosted attention 8.7% but slowed MLPs 13% as instruction fetch overhead stalled compute."
+Good narration: "So pipelining turned out to be a double-edged sword. Adding prefetch stages made the attention kernels about 9% faster — but the same technique slowed down the MLP layers by 13%, because all those extra pipeline instructions were competing for the same compute units. It helped one thing and broke another."
 
-Bad caption: "97% bandwidth collapse in fused kernels"
-Good caption: "More fusion ≠ faster inference"
+Bad caption: "Prefetching stalls compute-bound kernels"
+Good caption: "Same trick, opposite results"
 """
 
 
@@ -89,6 +92,7 @@ class NarrativeScriptAgent(BaseAgent):
         prompt = PROMPT_TEMPLATE.format(
             manifest_json=manifest_json,
             sentiment=sentiment,
+            sentiment_reason=sentiment_reason,
         )
 
         client = build_client()

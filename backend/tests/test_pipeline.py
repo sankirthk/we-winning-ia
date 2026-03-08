@@ -90,6 +90,7 @@ def _narration_generate(manifest: Manifest, client) -> NarrationScript:
     prompt = PROMPT_TEMPLATE.format(
         manifest_json=json.dumps(manifest.model_dump(), indent=2),
         sentiment=manifest.sentiment,
+        sentiment_reason=manifest.sentiment_reason,
     )
     response = generate_with_retry(client, GEMINI_FLASH_MODEL, [prompt])
     raw = ns_extract_json(response.text)
