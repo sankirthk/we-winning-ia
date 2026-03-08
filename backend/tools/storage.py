@@ -15,7 +15,7 @@ LOCAL_ROOT = Path(__file__).parent.parent / "local_storage"
 
 
 def save_upload(job_id: str, filename: str, data: bytes) -> str:
-    """Save raw bytes and return a URI (local path or gs://)."""
+    """Save job-scoped bytes and return a URI (local path or gs://)."""
     if DEV_MODE:
         dest = LOCAL_ROOT / job_id / filename
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -23,6 +23,26 @@ def save_upload(job_id: str, filename: str, data: bytes) -> str:
         return str(dest)
     else:
         return _gcs_upload(job_id, filename, data)
+
+
+def save_shared(path: str, data: bytes) -> str:
+    """
+    Save shared (non-job-scoped) bytes under shared/{path}.
+    Used for assets like avatars that are reused across all jobs.
+    Returns a URI (local path or gs://).
+    """
+    if DEV_MODE:
+        dest = LOCAL_ROOT / "shared" / path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return str(dest)
+    else:
+        from google.cloud import storage as gcs
+        client = gcs.Client()
+        bucket = client.bucket(GCS_BUCKET)
+        blob = bucket.blob(f"shared/{path}")
+        blob.upload_from_string(data)
+        return f"gs://{GCS_BUCKET}/shared/{path}"
 
 
 def get_uri(job_id: str, filename: str) -> str:

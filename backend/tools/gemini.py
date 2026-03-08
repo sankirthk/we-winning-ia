@@ -16,6 +16,7 @@ from google.genai import types
 
 GEMINI_MODEL = "publishers/google/models/gemini-3.1-pro-preview"
 GEMINI_FLASH_MODEL = "publishers/google/models/gemini-3-flash-preview"
+VEO_MODEL = "publishers/google/models/veo-3.0-generate-preview"
 
 # Retry config for 429 RESOURCE_EXHAUSTED
 _MAX_RETRIES = 5

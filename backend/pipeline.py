@@ -2,8 +2,6 @@ from google.adk.agents import SequentialAgent, ParallelAgent
 
 from agents.parser import parser_agent
 from agents.knowledge_base import knowledge_base_agent
-from agents.narrative_script import narrative_script_agent
-from agents.tts import tts_agent
 from agents.video_script import video_script_agent
 from agents.veo import veo_agent
 from agents.stitcher import stitcher_agent
@@ -11,7 +9,7 @@ from tools.job_store import update_job
 import traceback
 
 # ParserAgent and KnowledgeBaseAgent both read session["file_path"] and run in parallel.
-# ParserAgent  → session["manifest"]       (used by NarrativeScriptAgent + LiveAgent)
+# ParserAgent  → session["manifest"]       (used by VideoScriptAgent + LiveAgent)
 # KnowledgeBaseAgent → session["knowledge_base"] (injected into LiveAgent system context only)
 ingestion = ParallelAgent(
     name="Ingestion",
@@ -21,12 +19,10 @@ ingestion = ParallelAgent(
 pipeline = SequentialAgent(
     name="NeverRTFM",
     sub_agents=[
-        ingestion,              # PDF → manifest + knowledge_base (parallel)
-        narrative_script_agent, # manifest → narration_script
-        tts_agent,              # narration_script → tts_result
-        video_script_agent,     # narration_script + tts_result → video_script
-        veo_agent,              # video_script → veo_clips
-        stitcher_agent,         # everything → final_video_uri
+        ingestion,          # PDF → manifest + knowledge_base (parallel)
+        video_script_agent, # manifest → video_script (writes dialogue + directs presenter/b-roll)
+        veo_agent,          # video_script → veo_clips (audio baked in via Veo 3.1)
+        stitcher_agent,     # concatenate clips + burn captions → final_video_uri
     ],
 )
 
