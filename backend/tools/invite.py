@@ -48,5 +48,5 @@ async def consume_invite_code(code: str) -> bool:
 
     txn = db.transaction()
     result = await _txn(txn)
-    await db.close()
+    db.close()
     return result
