@@ -104,7 +104,7 @@ export default function Home() {
 }
 
 function App({ token }: { token: string | null }) {
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+  const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobState, setJobState] = useState<JobState>("idle");
