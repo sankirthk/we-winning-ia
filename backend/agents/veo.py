@@ -163,6 +163,7 @@ class VeoAgent(BaseAgent):
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         job_id = ctx.session.state["job_id"]
         pdf_hash = ctx.session.state["pdf_hash"]
+        tone = ctx.session.state.get("tone", "explanatory")
         video_script = ctx.session.state["video_script"]
 
         update_job(job_id, step="veo")
@@ -195,7 +196,7 @@ class VeoAgent(BaseAgent):
                 video_bytes = await asyncio.to_thread(_generate_clip, client, scene, avatar_img, job_id)
 
             print(f"[VeoAgent]   scene {scene_id} ✅ {len(video_bytes):,} bytes", flush=True)
-            clip_path = save_hash_bytes(pdf_hash, f"clips/clip_{scene_id:02d}.mp4", video_bytes)
+            clip_path = save_hash_bytes(pdf_hash, f"clips_{tone}/clip_{scene_id:02d}.mp4", video_bytes)
             return {
                 "scene_id": scene_id,
                 "clip_path": clip_path,

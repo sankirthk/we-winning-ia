@@ -108,6 +108,7 @@ function App({ token }: { token: string | null }) {
   const authHeader: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const [file, setFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [tone, setTone] = useState<"formal" | "explanatory" | "casual">("explanatory");
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobState, setJobState] = useState<JobState>("idle");
   const [statusText, setStatusText] = useState("Upload a PDF to begin.");
@@ -140,6 +141,7 @@ function App({ token }: { token: string | null }) {
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("tone", tone);
 
     try {
       const res = await fetch(`${API_BASE}/generate`, {
@@ -412,6 +414,33 @@ function App({ token }: { token: string | null }) {
                 Selected: <span className="font-medium">{file.name}</span>
               </div>
             )}
+
+            <div className="mt-4">
+              <label className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-zinc-400">
+                Video tone
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {(["formal", "explanatory", "casual"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTone(t)}
+                    className={`rounded-xl border py-2 text-sm font-medium capitalize transition ${
+                      tone === t
+                        ? "border-white bg-white text-black"
+                        : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500"
+                    }`}
+                  >
+                    {t === "explanatory" ? "Explain" : t === "casual" ? "Casual" : "Formal"}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-zinc-500">
+                {tone === "formal" && "Precise, professional language — executive briefing style."}
+                {tone === "explanatory" && "Clear, educational — explains the why behind every number."}
+                {tone === "casual" && "Conversational and direct — like a smart friend explaining it."}
+              </p>
+            </div>
 
             <button
               onClick={handleUpload}

@@ -105,7 +105,7 @@ def _concat_clips(captioned_paths: list[Path], output_path: Path) -> None:
         raise RuntimeError(f"ffmpeg concat failed:\n{result.stderr}")
 
 
-def _stitch(clips: list[dict], pdf_hash: str) -> str:
+def _stitch(clips: list[dict], pdf_hash: str, tone: str = "explanatory") -> str:
     """
     Full stitch pipeline — runs in a thread via asyncio.to_thread.
     Returns the final video URI (saved under cache/{pdf_hash}/final.mp4).
@@ -134,9 +134,9 @@ def _stitch(clips: list[dict], pdf_hash: str) -> str:
         _concat_clips(captioned_paths, final_path)
         print(f"  [StitcherAgent] Clips concatenated → {final_path}")
 
-        # Step 4: save to content-addressed cache path
+        # Step 4: save to content-addressed cache path (tone-scoped)
         final_bytes = final_path.read_bytes()
-        uri = save_hash_bytes(pdf_hash, "final.mp4", final_bytes)
+        uri = save_hash_bytes(pdf_hash, f"final_{tone}.mp4", final_bytes)
         print(f"  [StitcherAgent] Saved → {uri}")
 
         return uri
@@ -146,15 +146,16 @@ class StitcherAgent(BaseAgent):
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         job_id = ctx.session.state["job_id"]
         pdf_hash = ctx.session.state["pdf_hash"]
+        tone = ctx.session.state.get("tone", "explanatory")
         clips = ctx.session.state["veo_clips"]
 
         update_job(job_id, step="stitching")
-        print(f"\n[StitcherAgent] ▶ Starting — {len(clips)} clips to stitch", flush=True)
+        print(f"\n[StitcherAgent] ▶ Starting — {len(clips)} clips to stitch  tone={tone!r}", flush=True)
         for c in clips:
             print(f"  clip {c['scene_id']:2d}: {c['clip_path']}", flush=True)
 
         # Run ffmpeg work in thread pool — subprocess calls block the event loop
-        final_uri = await asyncio.to_thread(_stitch, clips, pdf_hash)
+        final_uri = await asyncio.to_thread(_stitch, clips, pdf_hash, tone)
 
         # In prod, return a signed URL so the frontend can stream directly from GCS
         if not DEV_MODE and final_uri.startswith("gs://"):

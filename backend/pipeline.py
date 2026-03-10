@@ -35,7 +35,10 @@ def _build_pipeline(agents: list) -> SequentialAgent:
     return SequentialAgent(name="NeverRTFM", sub_agents=agents)
 
 
-async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes):
+VALID_TONES = {"formal", "explanatory", "casual"}
+
+
+async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes, tone: str = "explanatory"):
     """
     Smart resumption pipeline. Checks what already exists for this PDF
     (by content hash) and only runs what's missing:
@@ -47,13 +50,14 @@ async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes):
       manifest/kb missing?       → Ingestion → VideoScript → Veo → Stitch
     """
     try:
+        tone = tone if tone in VALID_TONES else "explanatory"
         pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
-        print(f"\n[pipeline] ▶ job={job_id}  pdf_hash={pdf_hash[:16]}...", flush=True)
+        print(f"\n[pipeline] ▶ job={job_id}  pdf_hash={pdf_hash[:16]}...  tone={tone!r}", flush=True)
         update_job(job_id, status="processing", step="checking_cache")
 
         # ── 1. Final video already exists? ────────────────────────────────────
-        if hash_file_exists(pdf_hash, "final.mp4"):
-            final_uri = get_hash_uri(pdf_hash, "final.mp4")
+        if hash_file_exists(pdf_hash, f"final_{tone}.mp4"):
+            final_uri = get_hash_uri(pdf_hash, f"final_{tone}.mp4")
             if not DEV_MODE and final_uri.startswith("gs://"):
                 final_uri = get_signed_url(final_uri)
             print(f"[pipeline] ⚡ Final video cached — done instantly: {final_uri}", flush=True)
@@ -68,7 +72,7 @@ async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes):
         # ── 2. Load cached intermediate results ───────────────────────────────
         cached_manifest     = load_cache(pdf_hash, "manifest")
         cached_kb           = load_cache(pdf_hash, "knowledge_base")
-        cached_video_script = load_cache(pdf_hash, "video_script")
+        cached_video_script = load_cache(pdf_hash, f"video_script_{tone}")
 
         has_ingestion = cached_manifest is not None and cached_kb is not None
         has_script    = cached_video_script is not None
@@ -80,7 +84,7 @@ async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes):
         if has_script:
             for scene in cached_video_script.get("scenes", []):
                 sid = scene["scene_id"]
-                rel = f"clips/clip_{sid:02d}.mp4"
+                rel = f"clips_{tone}/clip_{sid:02d}.mp4"
                 if hash_file_exists(pdf_hash, rel):
                     existing_clips.append({
                         "scene_id": sid,
@@ -118,6 +122,7 @@ async def run_pipeline(job_id: str, file_path: str, pdf_bytes: bytes):
             "job_id":         job_id,
             "file_path":      file_path,
             "pdf_hash":       pdf_hash,
+            "tone":           tone,
             "existing_clips": existing_clips,
         }
 
