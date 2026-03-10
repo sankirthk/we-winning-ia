@@ -21,7 +21,7 @@ from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
 from google.genai import types
 
-from tools.storage import save_upload, get_signed_url, DEV_MODE, build_gcs_client
+from tools.storage import save_hash_bytes, get_signed_url, DEV_MODE, build_gcs_client
 from tools.job_store import update_job
 
 
@@ -105,10 +105,10 @@ def _concat_clips(captioned_paths: list[Path], output_path: Path) -> None:
         raise RuntimeError(f"ffmpeg concat failed:\n{result.stderr}")
 
 
-def _stitch(clips: list[dict], job_id: str) -> str:
+def _stitch(clips: list[dict], pdf_hash: str) -> str:
     """
     Full stitch pipeline — runs in a thread via asyncio.to_thread.
-    Returns the final video URI.
+    Returns the final video URI (saved under cache/{pdf_hash}/final.mp4).
     """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -134,10 +134,10 @@ def _stitch(clips: list[dict], job_id: str) -> str:
         _concat_clips(captioned_paths, final_path)
         print(f"  [StitcherAgent] Clips concatenated → {final_path}")
 
-        # Step 4: upload
+        # Step 4: save to content-addressed cache path
         final_bytes = final_path.read_bytes()
-        uri = save_upload(job_id, "final.mp4", final_bytes)
-        print(f"  [StitcherAgent] Uploaded → {uri}")
+        uri = save_hash_bytes(pdf_hash, "final.mp4", final_bytes)
+        print(f"  [StitcherAgent] Saved → {uri}")
 
         return uri
 
@@ -145,6 +145,7 @@ def _stitch(clips: list[dict], job_id: str) -> str:
 class StitcherAgent(BaseAgent):
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         job_id = ctx.session.state["job_id"]
+        pdf_hash = ctx.session.state["pdf_hash"]
         clips = ctx.session.state["veo_clips"]
 
         update_job(job_id, step="stitching")
@@ -153,7 +154,7 @@ class StitcherAgent(BaseAgent):
             print(f"  clip {c['scene_id']:2d}: {c['clip_path']}", flush=True)
 
         # Run ffmpeg work in thread pool — subprocess calls block the event loop
-        final_uri = await asyncio.to_thread(_stitch, clips, job_id)
+        final_uri = await asyncio.to_thread(_stitch, clips, pdf_hash)
 
         # In prod, return a signed URL so the frontend can stream directly from GCS
         if not DEV_MODE and final_uri.startswith("gs://"):

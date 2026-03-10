@@ -20,7 +20,7 @@ from google.adk.events import Event
 from google.genai import types
 
 from tools.gemini import build_veo_client, VEO_MODEL, VEO_FAST_MODEL
-from tools.storage import save_upload, build_gcs_client
+from tools.storage import save_hash_bytes, build_gcs_client
 from tools.job_store import update_job
 
 POLL_INTERVAL = 15  # seconds between operation status checks
@@ -162,11 +162,14 @@ def _generate_clip(client, scene: dict, avatar_image: types.Image | None, job_id
 class VeoAgent(BaseAgent):
     async def _run_async_impl(self, ctx: InvocationContext) -> AsyncGenerator[Event, None]:
         job_id = ctx.session.state["job_id"]
+        pdf_hash = ctx.session.state["pdf_hash"]
         video_script = ctx.session.state["video_script"]
 
         update_job(job_id, step="veo")
-        scenes = video_script["scenes"]
-        print(f"\n[VeoAgent] ▶ Starting — {len(scenes)} scenes to generate", flush=True)
+        scenes = video_script["scenes"]  # pipeline pre-filters to missing scenes only
+        existing_clips: list[dict] = ctx.session.state.get("existing_clips", [])
+
+        print(f"\n[VeoAgent] ▶ Starting — {len(scenes)} scenes to generate, {len(existing_clips)} already cached", flush=True)
         print(f"[VeoAgent]   avatar_male_path={video_script.get('avatar_male_path')!r}", flush=True)
         print(f"[VeoAgent]   avatar_female_path={video_script.get('avatar_female_path')!r}", flush=True)
 
@@ -192,7 +195,7 @@ class VeoAgent(BaseAgent):
                 video_bytes = await asyncio.to_thread(_generate_clip, client, scene, avatar_img, job_id)
 
             print(f"[VeoAgent]   scene {scene_id} ✅ {len(video_bytes):,} bytes", flush=True)
-            clip_path = save_upload(job_id, f"clip_{scene_id:02d}.mp4", video_bytes)
+            clip_path = save_hash_bytes(pdf_hash, f"clips/clip_{scene_id:02d}.mp4", video_bytes)
             return {
                 "scene_id": scene_id,
                 "clip_path": clip_path,
@@ -200,9 +203,12 @@ class VeoAgent(BaseAgent):
                 "caption": scene.get("caption", ""),
             }
 
-        # Fire all scenes concurrently (capped by semaphore), preserve scene order
-        clip_results = await asyncio.gather(*[generate_scene(s) for s in scenes])
-        clips = sorted(clip_results, key=lambda c: c["scene_id"])
+        # Fire all missing scenes concurrently (capped by semaphore)
+        new_clips = await asyncio.gather(*[generate_scene(s) for s in scenes])
+
+        # Merge with pre-existing clips and sort by scene_id
+        all_clips = list(existing_clips) + list(new_clips)
+        clips = sorted(all_clips, key=lambda c: c["scene_id"])
 
         ctx.session.state["veo_clips"] = clips
         update_job(job_id, step="stitching", veo_clips=clips)

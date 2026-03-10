@@ -23,7 +23,7 @@ from pydantic import ValidationError
 
 from models.knowledge_base import KnowledgeBase
 from tools.gemini import build_client, GEMINI_MODEL, generate_with_retry
-from tools.storage import read_bytes
+from tools.storage import read_bytes, save_cache
 from tools.job_store import update_job
 
 PROMPT = """
@@ -106,8 +106,12 @@ class KnowledgeBaseAgent(BaseAgent):
             raise ValueError(f"KnowledgeBaseAgent: validation failed:\n{e}") from e
 
         print(f"[KnowledgeBaseAgent] ✅ Done — {len(kb.deep_findings)} findings, {len(kb.key_facts)} facts, {len(kb.definitions)} definitions", flush=True)
-        ctx.session.state["knowledge_base"] = kb.model_dump()
-        update_job(job_id, knowledge_base=kb.model_dump())
+        kb_dict = kb.model_dump()
+        ctx.session.state["knowledge_base"] = kb_dict
+        update_job(job_id, knowledge_base=kb_dict)
+        if ctx.session.state.get("pdf_hash"):
+            save_cache(ctx.session.state["pdf_hash"], "knowledge_base", kb_dict)
+            print(f"[KnowledgeBaseAgent]   Cached knowledge_base for pdf_hash={ctx.session.state['pdf_hash'][:8]}...", flush=True)
 
         yield Event(
             author=self.name,

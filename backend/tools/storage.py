@@ -132,3 +132,44 @@ def _gcs_upload(job_id: str, filename: str, data: bytes) -> str:
     blob = bucket.blob(f"{job_id}/{filename}")
     blob.upload_from_string(data)
     return f"gs://{GCS_BUCKET}/{job_id}/{filename}"
+
+
+# ---------------------------------------------------------------------------
+# Hash-keyed binary storage — clips and final video live under cache/{pdf_hash}/
+# ---------------------------------------------------------------------------
+
+def save_hash_bytes(pdf_hash: str, rel_path: str, data: bytes) -> str:
+    """Save bytes to cache/{pdf_hash}/{rel_path}. Returns a URI."""
+    if DEV_MODE:
+        dest = CACHE_ROOT / pdf_hash / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(data)
+        return str(dest)
+    else:
+        client = build_gcs_client()
+        blob_path = f"cache/{pdf_hash}/{rel_path}"
+        client.bucket(GCS_BUCKET).blob(blob_path).upload_from_string(data)
+        return f"gs://{GCS_BUCKET}/{blob_path}"
+
+
+def hash_file_exists(pdf_hash: str, rel_path: str) -> bool:
+    """Return True if cache/{pdf_hash}/{rel_path} exists."""
+    if DEV_MODE:
+        return (CACHE_ROOT / pdf_hash / rel_path).exists()
+    else:
+        from google.cloud.exceptions import NotFound
+        client = build_gcs_client()
+        blob = client.bucket(GCS_BUCKET).blob(f"cache/{pdf_hash}/{rel_path}")
+        try:
+            blob.reload()
+            return True
+        except NotFound:
+            return False
+
+
+def get_hash_uri(pdf_hash: str, rel_path: str) -> str:
+    """Return the URI for cache/{pdf_hash}/{rel_path} (does not check existence)."""
+    if DEV_MODE:
+        return str(CACHE_ROOT / pdf_hash / rel_path)
+    else:
+        return f"gs://{GCS_BUCKET}/cache/{pdf_hash}/{rel_path}"
