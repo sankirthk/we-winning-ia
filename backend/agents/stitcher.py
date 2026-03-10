@@ -5,9 +5,12 @@
 #
 # Steps:
 #   1. Download each clip to a temp directory (handles both local paths and gs:// URIs)
-#   2. Burn caption onto each clip via ffmpeg drawtext
-#   3. Concatenate all captioned clips into a single MP4
+#   2. Concatenate with -c copy (no re-encode — stream copy is near-instant)
 #   4. Upload final video to GCS and return a signed URL
+#
+# Captions are passed through in the job metadata for the frontend to overlay,
+# not burned in — burning required libx264 re-encoding which took 15+ min on
+# Cloud Run's limited CPU.
 
 import asyncio
 import shutil
@@ -36,60 +39,11 @@ def _download_clip(clip_path: str, dest: Path) -> None:
         shutil.copy2(clip_path, dest)
 
 
-def _escape_drawtext(text: str) -> str:
-    """Escape special characters for ffmpeg drawtext filter."""
-    return (
-        text
-        .replace("\\", "\\\\")
-        .replace("'", "\\'")
-        .replace(":", "\\:")
-        .replace("[", "\\[")
-        .replace("]", "\\]")
-    )
-
-
-def _burn_caption(input_path: Path, output_path: Path, caption: str) -> None:
-    """
-    Burn caption text onto a clip using ffmpeg drawtext.
-    Positioned at bottom center with a semi-transparent black box.
-    If no caption, just copies the file.
-    """
-    if not caption:
-        shutil.copy2(input_path, output_path)
-        return
-
-    escaped = _escape_drawtext(caption)
-    vf = (
-        f"drawtext=text='{escaped}'"
-        ":fontsize=52"
-        ":fontcolor=white"
-        ":x=(w-text_w)/2"
-        ":y=h-200"
-        ":box=1"
-        ":boxcolor=black@0.55"
-        ":boxborderw=18"
-    )
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-vf", vf,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "18",
-        "-c:a", "copy",   # preserve Veo-generated audio untouched
-        str(output_path),
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"ffmpeg caption burn failed for {input_path.name}:\n{result.stderr}")
-
-
-def _concat_clips(captioned_paths: list[Path], output_path: Path) -> None:
-    """Concatenate captioned clips using ffmpeg concat demuxer."""
+def _concat_clips(clip_paths: list[Path], output_path: Path) -> None:
+    """Concatenate clips using ffmpeg concat demuxer with stream copy — no re-encode."""
     concat_file = output_path.parent / "concat.txt"
     with open(concat_file, "w") as f:
-        for p in captioned_paths:
+        for p in clip_paths:
             f.write(f"file '{p.resolve()}'\n")
 
     cmd = [
@@ -97,7 +51,7 @@ def _concat_clips(captioned_paths: list[Path], output_path: Path) -> None:
         "-f", "concat",
         "-safe", "0",
         "-i", str(concat_file),
-        "-c", "copy",   # clips are already h264 from caption burn step
+        "-c", "copy",
         str(output_path),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -107,37 +61,30 @@ def _concat_clips(captioned_paths: list[Path], output_path: Path) -> None:
 
 def _stitch(clips: list[dict], pdf_hash: str, tone: str = "explanatory") -> str:
     """
-    Full stitch pipeline — runs in a thread via asyncio.to_thread.
-    Returns the final video URI (saved under cache/{pdf_hash}/final.mp4).
+    Download clips, concat with stream copy (no re-encode), upload.
+    Returns the final video URI (saved under cache/{pdf_hash}/final_{tone}.mp4).
     """
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
 
         # Step 1: download all clips
-        raw_paths = []
+        clip_paths = []
         for clip in clips:
-            dest = tmp_dir / f"raw_{clip['scene_id']:02d}.mp4"
+            dest = tmp_dir / f"clip_{clip['scene_id']:02d}.mp4"
+            print(f"  [StitcherAgent] Downloading scene {clip['scene_id']}...", flush=True)
             _download_clip(clip["clip_path"], dest)
-            raw_paths.append((clip, dest))
-            print(f"  [StitcherAgent] Downloaded scene {clip['scene_id']}")
+            clip_paths.append(dest)
+            print(f"  [StitcherAgent] Downloaded scene {clip['scene_id']} ({dest.stat().st_size:,} bytes)", flush=True)
 
-        # Step 2: burn captions onto each clip
-        captioned_paths = []
-        for clip, raw_path in raw_paths:
-            captioned = tmp_dir / f"captioned_{clip['scene_id']:02d}.mp4"
-            _burn_caption(raw_path, captioned, clip.get("caption", ""))
-            captioned_paths.append(captioned)
-            print(f"  [StitcherAgent] Caption burned for scene {clip['scene_id']}")
-
-        # Step 3: concatenate
+        # Step 2: concat with -c copy (seconds, not minutes)
         final_path = tmp_dir / "final.mp4"
-        _concat_clips(captioned_paths, final_path)
-        print(f"  [StitcherAgent] Clips concatenated → {final_path}")
+        _concat_clips(clip_paths, final_path)
+        print(f"  [StitcherAgent] Concatenated → {final_path} ({final_path.stat().st_size:,} bytes)", flush=True)
 
-        # Step 4: save to content-addressed cache path (tone-scoped)
+        # Step 3: save to content-addressed cache path (tone-scoped)
         final_bytes = final_path.read_bytes()
         uri = save_hash_bytes(pdf_hash, f"final_{tone}.mp4", final_bytes)
-        print(f"  [StitcherAgent] Saved → {uri}")
+        print(f"  [StitcherAgent] Saved → {uri}", flush=True)
 
         return uri
 
@@ -150,11 +97,10 @@ class StitcherAgent(BaseAgent):
         clips = ctx.session.state["veo_clips"]
 
         update_job(job_id, step="stitching")
-        print(f"\n[StitcherAgent] ▶ Starting — {len(clips)} clips to stitch  tone={tone!r}", flush=True)
+        print(f"\n[StitcherAgent] ▶ Starting — {len(clips)} clips  tone={tone!r}", flush=True)
         for c in clips:
             print(f"  clip {c['scene_id']:2d}: {c['clip_path']}", flush=True)
 
-        # Run ffmpeg work in thread pool — subprocess calls block the event loop
         final_uri = await asyncio.to_thread(_stitch, clips, pdf_hash, tone)
 
         # In prod, return a signed URL so the frontend can stream directly from GCS

@@ -25,13 +25,13 @@ from tools.job_store import update_job
 
 POLL_INTERVAL = 15  # seconds between operation status checks
 
-# Max simultaneous Veo operations. Veo 3 preview quota is ~2 concurrent requests.
-# Raise to 3-4 if your project has higher quota; lower to 1 to avoid 429s.
-MAX_CONCURRENT_VEO = int(os.getenv("MAX_CONCURRENT_VEO", "2"))
+# Run all scenes in parallel — total wall time = slowest single clip, not sum of all.
+# Lower only if you hit concurrent-operation quota errors.
+MAX_CONCURRENT_VEO = int(os.getenv("MAX_CONCURRENT_VEO", "10"))
 
 # Retry config for transient Veo errors (code 8 = resource exhausted / high load)
-VEO_MAX_RETRIES = int(os.getenv("VEO_MAX_RETRIES", "4"))
-VEO_RETRY_BASE_DELAY = float(os.getenv("VEO_RETRY_BASE_DELAY", "30"))  # seconds
+VEO_MAX_RETRIES = int(os.getenv("VEO_MAX_RETRIES", "2"))
+VEO_RETRY_BASE_DELAY = float(os.getenv("VEO_RETRY_BASE_DELAY", "10"))  # seconds
 _VEO_RETRYABLE_CODES = {8}  # gRPC RESOURCE_EXHAUSTED
 
 
