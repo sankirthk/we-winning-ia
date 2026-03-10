@@ -125,8 +125,6 @@ function App({ token }: { token: string | null }) {
   const wsRef = useRef<WebSocket | null>(null);
   const pollRef = useRef<number | null>(null);
   const micRef = useRef<MicStreamer | null>(null);
-  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref mirrors for use inside stale closures (ws.onmessage)
   const isUserSpeakingRef = useRef(false);
 
   const player = useMemo(() => new PCMPlayer(24000), []);
@@ -247,31 +245,10 @@ function App({ token }: { token: string | null }) {
         videoRef.current?.pause();
       }
 
-      if (msg.type === "resume_video") {
-        // Cancel any pending resume
-        if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
-
-        // Poll until PCMPlayer drains, then resume with a short grace period
-        const waitForDrain = () => {
-          const remaining = player.remainingMs();
-          if (remaining > 50) {
-            resumeTimerRef.current = setTimeout(waitForDrain, Math.min(remaining / 2, 300));
-          } else {
-            resumeTimerRef.current = setTimeout(() => {
-              setIsAgentSpeaking(false);
-              void videoRef.current?.play().catch(() => {});
-            }, 400);
-          }
-        };
-        waitForDrain();
-      }
+      // resume_video is intentionally ignored — video only resumes when
+      // the user explicitly clicks "End turn".
 
       if (msg.type === "audio") {
-        // Cancel any pending resume — more audio is still arriving
-        if (resumeTimerRef.current) {
-          clearTimeout(resumeTimerRef.current);
-          resumeTimerRef.current = null;
-        }
         if (!isUserSpeakingRef.current) {
           setIsAgentSpeaking(true);
           void player.playChunk(msg.data_b64);
@@ -308,14 +285,14 @@ function App({ token }: { token: string | null }) {
         isUserSpeakingRef.current = true;
         setIsUserSpeaking(true);
         setIsAgentSpeaking(false);
-        if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
         player.stop();
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
+        videoRef.current?.pause();
       },
       outputSampleRate: 16000,
     });
+
+    // Pause video immediately when user clicks Start talking
+    videoRef.current?.pause();
 
     await mic.start();
     micRef.current = mic;
@@ -332,10 +309,17 @@ function App({ token }: { token: string | null }) {
     isUserSpeakingRef.current = false;
     setIsMicActive(false);
     setIsUserSpeaking(false);
+    setIsAgentSpeaking(false);
 
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "end_turn" }));
+    }
+
+    // Resume video on End turn — but only if it hasn't finished
+    const video = videoRef.current;
+    if (video && !video.ended) {
+      void video.play().catch(() => {});
     }
   }
 
@@ -343,7 +327,6 @@ function App({ token }: { token: string | null }) {
     return () => {
       if (pollRef.current) window.clearInterval(pollRef.current);
       if (wsRef.current) wsRef.current.close();
-      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
       void player.close();
       void micRef.current?.stop();
     };
