@@ -2,7 +2,6 @@
 # Deploy with: gcloud run services replace backend/service.yaml --region us-central1
 #
 # Key settings:
-#   minScale: 1      — always one warm instance for WebSocket connections
 #   maxScale: 5      — cap to control costs
 #   timeoutSeconds: 1800  — 30 min to accommodate Cloud Tasks pipeline calls
 #   cpu: "2"         — enough for concurrent ffmpeg + Veo polling
@@ -17,7 +16,6 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "1"
         autoscaling.knative.dev/maxScale: "5"
         run.googleapis.com/cpu-throttling: "false"
     spec:

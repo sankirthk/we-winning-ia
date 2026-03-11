@@ -217,6 +217,10 @@ function App({ token }: { token: string | null }) {
   async function connectLive() {
     if (!jobId || wsRef.current) return;
 
+    // Init AudioContext while still in a user-gesture context — browsers block
+    // AudioContext creation outside of one (e.g. in a WebSocket onmessage handler).
+    await player.init();
+
     const ws = new WebSocket(wsUrlForJob(jobId, token));
     wsRef.current = ws;
 
@@ -452,7 +456,7 @@ function App({ token }: { token: string | null }) {
 
                 <button
                   onClick={connectLive}
-                  disabled={!jobId || liveConnected === true}
+                  disabled={!jobId || !videoUrl || liveConnected === true}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm font-medium hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Volume2 className="h-4 w-4" />
