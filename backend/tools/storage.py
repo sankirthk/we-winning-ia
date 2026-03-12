@@ -1,56 +1,54 @@
-"""
-Storage abstraction — local dev vs GCS.
-
-DEV_MODE=true  → files written to local_storage/{job_id}/
-DEV_MODE=false → files written to GCS (GCS_BUCKET env var)
-"""
-
 import os
 from pathlib import Path
 
-DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
-GCS_BUCKET = os.getenv("GCS_BUCKET", "nevertrtfm")
 
-LOCAL_ROOT = Path(__file__).parent.parent / "local_storage"
+BASE_DIR = Path(__file__).resolve().parent.parent
+LOCAL_STORAGE_DIR = BASE_DIR / "storage"
+UPLOAD_DIR = BASE_DIR / "uploads"
+BACKEND_PUBLIC_BASE_URL = os.getenv("BACKEND_PUBLIC_BASE_URL", "http://127.0.0.1:8080")
+
+
+def ensure_local_dir(subdir: str) -> Path:
+    path = LOCAL_STORAGE_DIR / subdir
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def save_bytes_local(subdir: str, filename: str, data: bytes) -> str:
+    folder = ensure_local_dir(subdir)
+    file_path = folder / filename
+    file_path.write_bytes(data)
+    return str(file_path)
+
+
+def save_text_local(subdir: str, filename: str, text: str) -> str:
+    folder = ensure_local_dir(subdir)
+    file_path = folder / filename
+    file_path.write_text(text, encoding="utf-8")
+    return str(file_path)
+
+
+def file_url_for_local_path(file_path: str) -> str:
+    """
+    Convert backend local storage files to browser-usable URLs.
+    Falls back to the original path when it is outside LOCAL_STORAGE_DIR.
+    """
+    p = Path(file_path).resolve()
+    try:
+        rel = p.relative_to(LOCAL_STORAGE_DIR.resolve())
+    except ValueError:
+        return file_path
+    return f"{BACKEND_PUBLIC_BASE_URL}/storage/{rel.as_posix()}"
 
 
 def save_upload(job_id: str, filename: str, data: bytes) -> str:
-    """Save raw bytes and return a URI (local path or gs://)."""
-    if DEV_MODE:
-        dest = LOCAL_ROOT / job_id / filename
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(data)
-        return str(dest)
-    else:
-        return _gcs_upload(job_id, filename, data)
+    """
+    Save uploaded file locally under uploads/<job_id>/.
+    Returns the absolute file path.
+    """
+    job_dir = UPLOAD_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
 
-
-def get_uri(job_id: str, filename: str) -> str:
-    """Return the URI for an already-saved file."""
-    if DEV_MODE:
-        return str(LOCAL_ROOT / job_id / filename)
-    else:
-        return f"gs://{GCS_BUCKET}/{job_id}/{filename}"
-
-
-def get_signed_url(gcs_uri: str) -> str:
-    """Return a signed HTTPS URL for a GCS object (prod only)."""
-    from google.cloud import storage
-
-    client = storage.Client()
-    # gcs_uri format: gs://bucket/path/to/file
-    without_prefix = gcs_uri.removeprefix("gs://")
-    bucket_name, blob_path = without_prefix.split("/", 1)
-    bucket = client.bucket(bucket_name)
-    blob = bucket.blob(blob_path)
-    return blob.generate_signed_url(expiration=3600, method="GET", version="v4")
-
-
-def _gcs_upload(job_id: str, filename: str, data: bytes) -> str:
-    from google.cloud import storage
-
-    client = storage.Client()
-    bucket = client.bucket(GCS_BUCKET)
-    blob = bucket.blob(f"{job_id}/{filename}")
-    blob.upload_from_string(data)
-    return f"gs://{GCS_BUCKET}/{job_id}/{filename}"
+    file_path = job_dir / filename
+    file_path.write_bytes(data)
+    return str(file_path)

@@ -8,6 +8,7 @@ load_dotenv()
 
 from routers import generate, live, status
 from tools.job_store import create_job, update_job
+from fastapi.staticfiles import StaticFiles
 
 TEST_JOB_ID = "test-live-job"
 
@@ -34,6 +35,7 @@ print("GOOGLE_APPLICATION_CREDENTIALS:", os.getenv("GOOGLE_APPLICATION_CREDENTIA
 
 app = FastAPI(title="NeverRTFM API", version="0.1.0")
 
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:3000")],

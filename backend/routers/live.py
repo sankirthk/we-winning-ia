@@ -276,7 +276,12 @@ async def live_ws(websocket: WebSocket, job_id: str):
             await safe_close(code=4404)
             return
 
-        if job.get("status") == "error":
+        # Only block failed jobs if they have no usable report context
+        if (
+            job.get("status") == "error"
+            and not job.get("manifest")
+            and not job.get("knowledge_base")
+        ):
             await safe_send_json(
                 {
                     "type": "error",

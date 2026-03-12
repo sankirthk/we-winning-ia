@@ -1,10 +1,14 @@
 """
 POST /api/generate
 
-Accepts a PDF upload, saves it, creates a job, and fires the pipeline
-as a FastAPI background task.
+Accepts a PDF upload, saves it locally, creates a job,
+and launches the processing pipeline as a FastAPI background task.
 
-Returns: { job_id: str, status: "processing" }
+Returns:
+{
+    "job_id": str,
+    "status": "processing"
+}
 """
 
 import uuid
@@ -18,18 +22,42 @@ router = APIRouter()
 
 
 @router.post("/generate")
-async def generate(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+async def generate(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
+    # Validate file type
     if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF files are supported.",
+        )
 
+    # Create job
     job_id = str(uuid.uuid4())
-    data = await file.read()
-
-    file_path = save_upload(job_id, file.filename or "upload.pdf", data)
     create_job(job_id)
 
-    # Import here to avoid circular imports at module load time
-    from pipeline import run_pipeline
-    background_tasks.add_task(run_pipeline, job_id, file_path)
+    # Read uploaded file
+    data = await file.read()
 
-    return {"job_id": job_id, "status": "processing"}
+    # Save locally
+    file_path = save_upload(
+        job_id=job_id,
+        filename=file.filename or "upload.pdf",
+        data=data,
+    )
+
+    # Import here to avoid circular imports
+    from pipeline import run_pipeline
+
+    # Launch pipeline asynchronously
+    background_tasks.add_task(
+        run_pipeline,
+        job_id,
+        file_path,
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "processing",
+    }
